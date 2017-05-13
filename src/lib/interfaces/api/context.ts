@@ -96,7 +96,7 @@ export interface Context {
   username: string;
   cookies: CookieStore;
   skypeToken: SkypeToken;
-  registrationToken: RegistrationToken;
+  registrationToken?: RegistrationToken;
 }
 
 export namespace Context {
@@ -107,7 +107,7 @@ export namespace Context {
     username: string;
     cookies: Object;
     skypeToken: SkypeToken.Json;
-    registrationToken: RegistrationToken.Json;
+    registrationToken?: RegistrationToken.Json;
   }
 
   export function toJson(context: Context): Context.Json {
@@ -115,7 +115,7 @@ export namespace Context {
       username: context.username,
       cookies: new CookieJar(context.cookies).serializeSync(),
       skypeToken: SkypeToken.toJson(context.skypeToken),
-      registrationToken: RegistrationToken.toJson(context.registrationToken),
+      registrationToken: context.registrationToken && RegistrationToken.toJson(context.registrationToken),
     };
   }
 
@@ -127,7 +127,7 @@ export namespace Context {
       username: context.username,
       cookies,
       skypeToken: SkypeToken.fromJson(context.skypeToken),
-      registrationToken: RegistrationToken.fromJson(context.registrationToken),
+      registrationToken: context.registrationToken && RegistrationToken.fromJson(context.registrationToken),
     };
   }
 }

@@ -1,5 +1,6 @@
 import {EventEmitter} from "events";
 import {Incident} from "incident";
+import {registerEndpoint} from "../api/register-endpoint";
 import {UnexpectedHttpStatusError} from "../errors/http";
 import {ParsedConversationId} from "../interfaces/api/api";
 import {Context as ApiContext} from "../interfaces/api/context";
@@ -184,6 +185,10 @@ export class MessagesPoller extends EventEmitter {
    */
   protected async getMessages(): Promise<void> {
     try {
+      if (this.apiContext.registrationToken === undefined) {
+        this.apiContext.registrationToken = await registerEndpoint(this.io, this.apiContext);
+      }
+
       const requestOptions: httpIo.PostOptions = {
         // TODO: explicitly define user, endpoint and subscription
         uri: messagesUri.poll(this.apiContext.registrationToken.host),

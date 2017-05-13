@@ -8,6 +8,7 @@ import {
 } from "../interfaces/native-api/conversation";
 import * as messagesUri from "../messages-uri";
 import {formatConversation, formatThread} from "../utils/formatters";
+import {registerEndpoint} from "./register-endpoint";
 
 interface ConversationBody {
   conversations: NativeConversation[];
@@ -30,6 +31,10 @@ export async function getConversation(
   apiContext: Context,
   conversationId: string,
 ): Promise<Conversation> {
+  if (apiContext.registrationToken === undefined) {
+    apiContext.registrationToken = await registerEndpoint(io, apiContext);
+  }
+
   const query: GetConversationQuery = {
     startTime: 0,
     view: "msnp24Equivalent",

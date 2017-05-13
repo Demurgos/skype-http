@@ -4,6 +4,7 @@ import {Context} from "../interfaces/api/context";
 import * as io from "../interfaces/http-io";
 import * as messagesUri from "../messages-uri";
 import {getCurrentTime} from "../utils";
+import {registerEndpoint} from "./register-endpoint";
 
 interface SendMessageResponse {
   OriginalArrivalTime: number;
@@ -21,6 +22,9 @@ export async function sendMessage(
   message: api.NewMessage,
   conversationId: string,
 ): Promise<api.SendMessageResult> {
+  if (apiContext.registrationToken === undefined) {
+    apiContext.registrationToken = await registerEndpoint(io, apiContext);
+  }
 
   const query: SendMessageQuery = {
     clientmessageid: String(getCurrentTime() + Math.floor(10000 * Math.random())),

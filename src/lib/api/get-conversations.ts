@@ -6,6 +6,7 @@ import * as io from "../interfaces/http-io";
 import {Conversation as NativeConversation} from "../interfaces/native-api/conversation";
 import * as messagesUri from "../messages-uri";
 import {formatConversation} from "../utils/formatters";
+import {registerEndpoint} from "./register-endpoint";
 
 interface ConversationsBody {
   conversations: NativeConversation[];
@@ -24,6 +25,10 @@ interface GetConversationsQuery {
 }
 
 export async function getConversations(io: io.HttpIo, apiContext: Context): Promise<Conversation[]> {
+  if (apiContext.registrationToken === undefined) {
+    apiContext.registrationToken = await registerEndpoint(io, apiContext);
+  }
+
   const query: GetConversationsQuery = {
     startTime: 0,
     view: "msnp24Equivalent",

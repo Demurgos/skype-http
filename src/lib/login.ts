@@ -1,15 +1,12 @@
 ﻿import {Incident} from "incident";
 import {MemoryCookieStore, Store as CookieStore} from "tough-cookie";
-import {parse as parseUri, Url} from "url";
+import {registerEndpoint} from "./api/register-endpoint";
 import * as Consts from "./consts";
 import {Credentials} from "./interfaces/api/api";
 import {Context as ApiContext, RegistrationToken, SkypeToken} from "./interfaces/api/context";
 import * as io from "./interfaces/http-io";
-import {Dictionary} from "./interfaces/utils";
 import * as messagesUri from "./messages-uri";
 import * as microsoftAccount from "./providers/microsoft-account";
-import * as utils from "./utils";
-import {hmacSha256} from "./utils/hmac-sha256";
 
 interface IoOptions {
   io: io.HttpIo;
@@ -50,11 +47,13 @@ export async function login(options: LoginOptions): Promise<ApiContext> {
     console.log("Acquired SkypeToken");
   }
 
-  const registrationToken: RegistrationToken = await getRegistrationToken(
-    ioOptions,
+  const apiState: ApiContext = {
+    username: options.credentials.username,
+    cookies,
     skypeToken,
-    Consts.SKYPEWEB_DEFAULT_MESSAGES_HOST,
-  );
+  };
+
+  const registrationToken: RegistrationToken = await registerEndpoint(ioOptions.io, apiState);
   if (options.verbose) {
     console.log("Acquired RegistrationToken");
   }
@@ -69,96 +68,9 @@ export async function login(options: LoginOptions): Promise<ApiContext> {
     console.log("Created presence docs");
   }
 
-  return {
-    username: options.credentials.username,
-    skypeToken,
-    cookies,
-    registrationToken,
-  };
-}
+  apiState.registrationToken = registrationToken;
 
-function getLockAndKeyResponse(time: number): string {
-  const inputBuffer: Buffer = Buffer.from(String(time), "utf8");
-  const appIdBuffer: Buffer = Buffer.from(Consts.SKYPEWEB_LOCKANDKEY_APPID, "utf8");
-  const secretBuffer: Buffer = Buffer.from(Consts.SKYPEWEB_LOCKANDKEY_SECRET, "utf8");
-  return hmacSha256(inputBuffer, appIdBuffer, secretBuffer);
-}
-
-// Get the token used to subscribe to resources
-async function getRegistrationToken(
-  options: IoOptions,
-  skypeToken: SkypeToken,
-  messagesHost: string,
-  retry: number = 2,
-): Promise<RegistrationToken> {
-  const startTime: number = utils.getCurrentTime();
-  const lockAndKeyResponse: string = getLockAndKeyResponse(startTime);
-  const headers: Dictionary<string> = {
-    LockAndKey: utils.stringifyHeaderParams({
-      appId: Consts.SKYPEWEB_LOCKANDKEY_APPID,
-      time: String(startTime),
-      lockAndKeyResponse: lockAndKeyResponse,
-    }),
-    ClientInfo: utils.stringifyHeaderParams({
-      os: "Windows",
-      osVer: "10",
-      proc: "Win64",
-      lcid: "en-us",
-      deviceType: "1",
-      country: "n/a",
-      clientName: Consts.SKYPEWEB_CLIENTINFO_NAME,
-      clientVer: Consts.SKYPEWEB_CLIENTINFO_VERSION,
-    }),
-    Authentication: utils.stringifyHeaderParams({
-      skypetoken: skypeToken.value,
-    }),
-  };
-
-  const requestOptions: io.PostOptions = {
-    uri: messagesUri.endpoints(messagesHost),
-    headers: headers,
-    cookies: options.cookies,
-    body: "{}", // Skype requires you to send an empty object as a body
-  };
-
-  const res: io.Response = await options.io.post(requestOptions);
-  if (res.statusCode !== 201 && res.statusCode !== 301) {
-    return Promise.reject(new Incident("net", "Unable to register an endpoint"));
-  }
-  // TODO: handle statusCode 201 & 301
-
-  const locationHeader: string = res.headers["location"];
-
-  const location: Url = parseUri(locationHeader); // TODO: parse in messages-uri.ts
-  if (location.host === undefined) {
-    throw new Incident("parse-error", "Expected location to define host");
-  }
-  if (location.host !== messagesHost) { // mainly when 301, but sometimes when 201
-    messagesHost = location.host;
-    if (retry > 0) {
-      return getRegistrationToken(options, skypeToken, messagesHost, retry--);
-    } else {
-      return Promise.reject(new Incident("net", "Exceeded max tries"));
-    }
-  }
-
-  // registrationTokenHeader is like "registrationToken=someString; expires=someNumber; endpointId={someString}"
-  const registrationTokenHeader: string = res.headers["set-registrationtoken"];
-  const parsedHeader: Dictionary<string> = utils.parseHeaderParams(registrationTokenHeader);
-
-  if (!parsedHeader["registrationToken"] || !parsedHeader["expires"] || !parsedHeader["endpointId"]) {
-    return Promise.reject(new Incident("protocol", "Missing parameters for the registrationToken"));
-  }
-
-  const expires: number = parseInt(parsedHeader["expires"], 10); // in seconds
-
-  return <RegistrationToken> {
-    value: parsedHeader["registrationToken"],
-    expirationDate: new Date(1000 * expires),
-    endpointId: parsedHeader["endpointId"],
-    raw: registrationTokenHeader,
-    host: messagesHost,
-  };
+  return apiState;
 }
 
 async function subscribeToResources(ioOptions: IoOptions, registrationToken: RegistrationToken): Promise<void> {
